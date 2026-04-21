@@ -1,0 +1,21 @@
+{
+  "name": "3d-model-viewer",
+  "version": "1.0.0",
+  "description": "STEP/STL 3D Model Viewer",
+  "main": "main_debug.js",
+  "scripts": {
+    "build": "esbuild main.js --bundle --platform=node --external:electron --external:node:* --outfile=main_bundle.js",
+    "start": "npm run build && electron ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^41.2.1",
+    "esbuild": "^0.28.0"
+  },
+  "dependencies": {
+    "occt-import-js": "^0.0.23",
+    "three": "^0.184.0"
+  }
+}

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline';" />
+  <title>3D モデルビューアー</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #16213e;
+      border-bottom: 1px solid #0f3460;
+      flex-shrink: 0;
+    }
+
+    #toolbar button {
+      padding: 6px 14px;
+      border: 1px solid #0f3460;
+      border-radius: 4px;
+      background: #0f3460;
+      color: #e0e0e0;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background 0.15s;
+    }
+
+    #toolbar button:hover { background: #1a4f8a; }
+    #toolbar button:active { background: #0a2a50; }
+
+    #toolbar .separator {
+      width: 1px;
+      height: 24px;
+      background: #0f3460;
+      margin: 0 4px;
+    }
+
+    #canvas-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #canvas-container canvas {
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    #drop-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 52, 96, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      border: 3px dashed #1a4f8a;
+    }
+
+    #drop-overlay.visible { opacity: 1; }
+
+    #loading-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(26, 26, 46, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      display: none;
+    }
+
+    #loading-overlay.visible { display: flex; }
+
+    /* Move dialog */
+    #move-dialog {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    #move-dialog.visible { display: flex; }
+
+    #move-dialog .dialog-box {
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 8px;
+      padding: 24px;
+      width: 300px;
+    }
+
+    #move-dialog h3 {
+      margin-bottom: 16px;
+      font-size: 16px;
+    }
+
+    #move-dialog .field {
+      display: flex;
+      align-items: center;
+      margin-bottom: 12px;
+      gap: 8px;
+    }
+
+    #move-dialog label { width: 24px; font-weight: bold; }
+
+    #move-dialog input {
+      flex: 1;
+      padding: 6px 8px;
+      background: #0f3460;
+      border: 1px solid #1a4f8a;
+      border-radius: 4px;
+      color: #e0e0e0;
+      font-size: 13px;
+    }
+
+    #move-dialog .unit { font-size: 12px; color: #aaa; }
+
+    #move-dialog .buttons {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    #move-dialog .buttons button {
+      padding: 6px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      border: none;
+    }
+
+    #move-dialog .buttons .ok { background: #0f3460; color: #e0e0e0; }
+    #move-dialog .buttons .ok:hover { background: #1a4f8a; }
+    #move-dialog .buttons .cancel { background: #333; color: #e0e0e0; }
+    #move-dialog .buttons .cancel:hover { background: #444; }
+  </style>
+</head>
+<body>
+
+  <div id="toolbar">
+    <button id="btn-open">ファイルを開く</button>
+    <div class="separator"></div>
+    <button id="btn-move">移動</button>
+    <button id="btn-export">エクスポート</button>
+    <div class="separator"></div>
+    <button id="btn-reset">リセット</button>
+  </div>
+
+  <div id="canvas-container">
+    <div id="drop-overlay">ここにファイルをドロップ</div>
+    <div id="loading-overlay">読み込み中...</div>
+  </div>
+
+  <!-- Move dialog -->
+  <div id="move-dialog">
+    <div class="dialog-box">
+      <h3>平行移動</h3>
+      <div class="field">
+        <label>X</label>
+        <input type="number" id="move-x" value="0" step="0.0001" />
+        <span class="unit">mm</span>
+      </div>
+      <div class="field">
+        <label>Y</label>
+        <input type="number" id="move-y" value="0" step="0.0001" />
+        <span class="unit">mm</span>
+      </div>
+      <div class="field">
+        <label>Z</label>
+        <input type="number" id="move-z" value="0" step="0.0001" />
+        <span class="unit">mm</span>
+      </div>
+      <div class="buttons">
+        <button class="cancel" id="move-cancel">キャンセル</button>
+        <button class="ok" id="move-ok">適用</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./node_modules/three/build/three.module.js",
+      "three/addons/": "./node_modules/three/examples/jsm/"
+    }
+  }
+  </script>
+  <script src="./node_modules/occt-import-js/dist/occt-import-js.js"></script>
+  <script type="module" src="renderer.js"></script>
+</body>
+</html>
