@@ -30,14 +30,16 @@ scene.add(dirLight2);
 // Grid
 scene.add(new THREE.GridHelper(2000, 40, 0x0f3460, 0x0f3460));
 
-// ─── Origin axes (X=水平/赤, Y=奥行き/緑, Z=垂直/青) ────────────────────────
+// ─── Origin axes  右手系 Z-up: X×Y=Z ────────────────────────────────────────
+//   User X (水平)  = Three.js +X  (1, 0,  0)
+//   User Y (奥行き) = Three.js -Z  (0, 0, -1)   X×Y=Z を満たす
+//   User Z (垂直)  = Three.js +Y  (0, 1,  0)
 const AXES_SIZE = 150;
 const _O = new THREE.Vector3(0, 0, 0);
 
-// Y=奥行きは Three.js Z 方向、Z=垂直は Three.js Y 方向にマッピング
-scene.add(new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), _O, AXES_SIZE, 0xff4444, 25, 10));
-scene.add(new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), _O, AXES_SIZE, 0x44ff44, 25, 10));
-scene.add(new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), _O, AXES_SIZE, 0x4488ff, 25, 10));
+scene.add(new THREE.ArrowHelper(new THREE.Vector3( 1,  0,  0), _O, AXES_SIZE, 0xff4444, 25, 10)); // X
+scene.add(new THREE.ArrowHelper(new THREE.Vector3( 0,  0, -1), _O, AXES_SIZE, 0x44ff44, 25, 10)); // Y
+scene.add(new THREE.ArrowHelper(new THREE.Vector3( 0,  1,  0), _O, AXES_SIZE, 0x4488ff, 25, 10)); // Z
 
 function makeAxisLabel(text, color, position) {
   const cv = document.createElement('canvas');
@@ -55,9 +57,9 @@ function makeAxisLabel(text, color, position) {
   sprite.scale.setScalar(28);
   scene.add(sprite);
 }
-makeAxisLabel('X', '#ff6666', new THREE.Vector3(AXES_SIZE + 16, 0, 0));
-makeAxisLabel('Y', '#66ff66', new THREE.Vector3(0, 0, AXES_SIZE + 16)); // 奥行き
-makeAxisLabel('Z', '#6699ff', new THREE.Vector3(0, AXES_SIZE + 16, 0)); // 垂直
+makeAxisLabel('X', '#ff6666', new THREE.Vector3( AXES_SIZE + 16,  0,           0));
+makeAxisLabel('Y', '#66ff66', new THREE.Vector3( 0,               0, -(AXES_SIZE + 16))); // -Z in Three.js
+makeAxisLabel('Z', '#6699ff', new THREE.Vector3( 0,  AXES_SIZE + 16,           0));
 
 // ─── State ───────────────────────────────────────────────────────────────────
 const modelsGroup = new THREE.Group();
@@ -281,6 +283,14 @@ async function loadSTEP(buffer, name) {
   }
 }
 
+// Z-up (X,Y,Z) → Three.js (X, Z_user, -Y_user)
+//   User X → Three.js X
+//   User Y → Three.js -Z
+//   User Z → Three.js  Y
+function applyTranslation() {
+  modelsGroup.position.set(translation.x, translation.z, -translation.y);
+}
+
 async function handleFile(buffer, fileName) {
   const ext = fileName.split('.').pop().toLowerCase();
   if (ext === 'stl') {
@@ -288,7 +298,7 @@ async function handleFile(buffer, fileName) {
   } else {
     await loadSTEP(buffer, fileName);
   }
-  modelsGroup.position.copy(translation);
+  applyTranslation();
 }
 
 // ─── IPC: file from main process ─────────────────────────────────────────────
@@ -370,7 +380,7 @@ document.getElementById('move-ok').addEventListener('click', () => {
   translation.x = parseFloat(document.getElementById('move-x').value) || 0;
   translation.y = parseFloat(document.getElementById('move-y').value) || 0;
   translation.z = parseFloat(document.getElementById('move-z').value) || 0;
-  modelsGroup.position.copy(translation);
+  applyTranslation();
   moveDialog.classList.remove('visible');
 });
 
