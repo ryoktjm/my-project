@@ -30,9 +30,14 @@ scene.add(dirLight2);
 // Grid
 scene.add(new THREE.GridHelper(2000, 40, 0x0f3460, 0x0f3460));
 
-// ─── Origin axes ─────────────────────────────────────────────────────────────
+// ─── Origin axes (X=水平/赤, Y=奥行き/緑, Z=垂直/青) ────────────────────────
 const AXES_SIZE = 150;
-scene.add(new THREE.AxesHelper(AXES_SIZE));
+const _O = new THREE.Vector3(0, 0, 0);
+
+// Y=奥行きは Three.js Z 方向、Z=垂直は Three.js Y 方向にマッピング
+scene.add(new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), _O, AXES_SIZE, 0xff4444, 25, 10));
+scene.add(new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), _O, AXES_SIZE, 0x44ff44, 25, 10));
+scene.add(new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), _O, AXES_SIZE, 0x4488ff, 25, 10));
 
 function makeAxisLabel(text, color, position) {
   const cv = document.createElement('canvas');
@@ -51,8 +56,8 @@ function makeAxisLabel(text, color, position) {
   scene.add(sprite);
 }
 makeAxisLabel('X', '#ff6666', new THREE.Vector3(AXES_SIZE + 16, 0, 0));
-makeAxisLabel('Y', '#66ff66', new THREE.Vector3(0, AXES_SIZE + 16, 0));
-makeAxisLabel('Z', '#6699ff', new THREE.Vector3(0, 0, AXES_SIZE + 16));
+makeAxisLabel('Y', '#66ff66', new THREE.Vector3(0, 0, AXES_SIZE + 16)); // 奥行き
+makeAxisLabel('Z', '#6699ff', new THREE.Vector3(0, AXES_SIZE + 16, 0)); // 垂直
 
 // ─── State ───────────────────────────────────────────────────────────────────
 const modelsGroup = new THREE.Group();
