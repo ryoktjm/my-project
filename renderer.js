@@ -138,11 +138,18 @@ async function loadSTL(buffer, name) {
   addMesh(geometry, name);
 }
 
+let _occtInstance = null;
+async function getOcct() {
+  if (!_occtInstance) {
+    _occtInstance = await occtimportjs({
+      locateFile: (f) => `./node_modules/occt-import-js/dist/${f}`,
+    });
+  }
+  return _occtInstance;
+}
+
 async function loadSTEP(buffer, name) {
-  // occtimportjs is a global set by the <script> tag in index.html
-  const occt = await occtimportjs({
-    locateFile: (f) => `./node_modules/occt-import-js/dist/${f}`,
-  });
+  const occt = await getOcct();
 
   const result = occt.ReadStepFile(new Uint8Array(buffer), null);
 
@@ -297,9 +304,9 @@ function buildSTLBuffer(group) {
       const ib = idx ? idx[i*3+1] : i*3+1;
       const ic = idx ? idx[i*3+2] : i*3+2;
 
-      vA.fromBufferAttribute(pos, ia).add(group.position);
-      vB.fromBufferAttribute(pos, ib).add(group.position);
-      vC.fromBufferAttribute(pos, ic).add(group.position);
+      vA.fromBufferAttribute(pos, ia);
+      vB.fromBufferAttribute(pos, ib);
+      vC.fromBufferAttribute(pos, ic);
       e1.subVectors(vB, vA); e2.subVectors(vC, vA);
       n.crossVectors(e1, e2).normalize();
 

@@ -1,10 +1,8 @@
-import * as electron from 'electron/main';
-import path from 'node:path';
-import fs from 'node:fs';
-import { fileURLToPath } from 'node:url';
+'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog, Menu } = electron;
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
+const path = require('node:path');
+const fs = require('node:fs');
 
 let mainWindow;
 

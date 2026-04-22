@@ -2,10 +2,9 @@
   "name": "3d-model-viewer",
   "version": "1.0.0",
   "description": "STEP/STL 3D Model Viewer",
-  "main": "main_debug.js",
+  "main": "main.js",
   "scripts": {
-    "build": "esbuild main.js --bundle --platform=node --external:electron --external:node:* --outfile=main_bundle.js",
-    "start": "npm run build && electron ."
+    "start": "ELECTRON_RUN_AS_NODE= electron ."
   },
   "keywords": [],
   "author": "",
