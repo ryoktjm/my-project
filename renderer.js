@@ -30,6 +30,30 @@ scene.add(dirLight2);
 // Grid
 scene.add(new THREE.GridHelper(2000, 40, 0x0f3460, 0x0f3460));
 
+// ─── Origin axes ─────────────────────────────────────────────────────────────
+const AXES_SIZE = 150;
+scene.add(new THREE.AxesHelper(AXES_SIZE));
+
+function makeAxisLabel(text, color, position) {
+  const cv = document.createElement('canvas');
+  cv.width = 64; cv.height = 64;
+  const ctx = cv.getContext('2d');
+  ctx.font = 'bold 52px sans-serif';
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 32, 32);
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: false })
+  );
+  sprite.position.copy(position);
+  sprite.scale.setScalar(28);
+  scene.add(sprite);
+}
+makeAxisLabel('X', '#ff6666', new THREE.Vector3(AXES_SIZE + 16, 0, 0));
+makeAxisLabel('Y', '#66ff66', new THREE.Vector3(0, AXES_SIZE + 16, 0));
+makeAxisLabel('Z', '#6699ff', new THREE.Vector3(0, 0, AXES_SIZE + 16));
+
 // ─── State ───────────────────────────────────────────────────────────────────
 const modelsGroup = new THREE.Group();
 scene.add(modelsGroup);
@@ -37,9 +61,61 @@ scene.add(modelsGroup);
 let isDragging = false;
 let isRightDragging = false;
 let lastMouse = { x: 0, y: 0 };
+let mouseDownPos = { x: 0, y: 0 };
+let didDrag = false;
+const DRAG_THRESHOLD = 5;
 const spherical = new THREE.Spherical().setFromVector3(INITIAL_CAM_POS);
 const cameraTarget = new THREE.Vector3();
 const translation = new THREE.Vector3();
+
+// ─── Selection ───────────────────────────────────────────────────────────────
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let selectedName = null;
+
+function selectModel(name) {
+  modelsGroup.traverse(obj => {
+    if (obj.isMesh) obj.material.emissive.set(0x000000);
+  });
+  selectedName = name;
+  if (name) {
+    modelsGroup.traverse(obj => {
+      if (obj.isMesh && obj.name === name) obj.material.emissive.set(0x2255aa);
+    });
+    document.getElementById('btn-delete').disabled = false;
+    document.getElementById('selection-label').textContent = `選択中: ${name}`;
+  } else {
+    document.getElementById('btn-delete').disabled = true;
+    document.getElementById('selection-label').textContent = '';
+  }
+}
+
+function deleteSelected() {
+  if (!selectedName) return;
+  const toRemove = [];
+  modelsGroup.traverse(obj => {
+    if (obj.isMesh && obj.name === selectedName) toRemove.push(obj);
+  });
+  for (const obj of toRemove) {
+    obj.geometry.dispose();
+    obj.material.dispose();
+    modelsGroup.remove(obj);
+  }
+  selectedName = null;
+  document.getElementById('btn-delete').disabled = true;
+  document.getElementById('selection-label').textContent = '';
+}
+
+function handleCanvasClick(e) {
+  const rect = canvas.getBoundingClientRect();
+  pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const meshes = [];
+  modelsGroup.traverse(obj => { if (obj.isMesh) meshes.push(obj); });
+  const hits = raycaster.intersectObjects(meshes, false);
+  selectModel(hits.length > 0 ? hits[0].object.name : null);
+}
 
 // ─── Camera helpers ───────────────────────────────────────────────────────────
 function updateCamera() {
@@ -52,12 +128,29 @@ updateCamera();
 const canvas = renderer.domElement;
 
 canvas.addEventListener('mousedown', (e) => {
-  if (e.button === 0) isDragging = true;
+  if (e.button === 0) {
+    isDragging = true;
+    didDrag = false;
+    mouseDownPos = { x: e.clientX, y: e.clientY };
+  }
   if (e.button === 2) isRightDragging = true;
   lastMouse = { x: e.clientX, y: e.clientY };
 });
 
-window.addEventListener('mouseup', () => { isDragging = false; isRightDragging = false; });
+window.addEventListener('mouseup', (e) => {
+  if (e.button === 0) {
+    if (!didDrag) {
+      const rect = canvas.getBoundingClientRect();
+      if (e.clientX >= rect.left && e.clientX <= rect.right &&
+          e.clientY >= rect.top && e.clientY <= rect.bottom) {
+        handleCanvasClick(e);
+      }
+    }
+    isDragging = false;
+    didDrag = false;
+  }
+  if (e.button === 2) isRightDragging = false;
+});
 
 window.addEventListener('mousemove', (e) => {
   const dx = e.clientX - lastMouse.x;
@@ -65,6 +158,10 @@ window.addEventListener('mousemove', (e) => {
   lastMouse = { x: e.clientX, y: e.clientY };
 
   if (isDragging) {
+    if (Math.abs(e.clientX - mouseDownPos.x) > DRAG_THRESHOLD ||
+        Math.abs(e.clientY - mouseDownPos.y) > DRAG_THRESHOLD) {
+      didDrag = true;
+    }
     spherical.theta -= dx * 0.005;
     spherical.phi = Math.max(0.05, Math.min(Math.PI - 0.05, spherical.phi - dy * 0.005));
     updateCamera();
@@ -233,6 +330,14 @@ container.addEventListener('drop', async (e) => {
 // ─── Toolbar ─────────────────────────────────────────────────────────────────
 document.getElementById('btn-open').addEventListener('click', () => {
   window.electronAPI.openFileDialog();
+});
+
+document.getElementById('btn-delete').addEventListener('click', deleteSelected);
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Delete' && selectedName && document.activeElement.tagName !== 'INPUT') {
+    deleteSelected();
+  }
 });
 
 document.getElementById('btn-reset').addEventListener('click', () => {
