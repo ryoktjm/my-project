@@ -4,7 +4,7 @@ import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 // ─── Scene setup ─────────────────────────────────────────────────────────────
 const container = document.getElementById('canvas-container');
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(container.clientWidth, container.clientHeight);
 renderer.shadowMap.enabled = true;
@@ -13,12 +13,13 @@ container.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1a1a2e);
 
-const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.01, 100000);
+// near=0.001mm, far=10,000,000mm — covers 0.0001mm precision to 10km range
+const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.001, 1e7);
 const INITIAL_CAM_POS = new THREE.Vector3(0, 200, 500);
 camera.position.copy(INITIAL_CAM_POS);
 camera.lookAt(0, 0, 0);
 
-// Lights
+// Lights (Three.js world space)
 scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
 dirLight1.position.set(500, 800, 500);
@@ -27,19 +28,28 @@ const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
 dirLight2.position.set(-500, -200, -500);
 scene.add(dirLight2);
 
-// Grid
-scene.add(new THREE.GridHelper(2000, 40, 0x0f3460, 0x0f3460));
+// ─── Z-up root ────────────────────────────────────────────────────────────────
+// All scene content is authored in right-hand Z-up space (X=右, Y=奥行き, Z=上).
+// rotation.x = -π/2 converts Z-up (x,y,z) → Three.js Y-up (x, z, -y).
+const zUpRoot = new THREE.Group();
+zUpRoot.rotation.x = -Math.PI / 2;
+scene.add(zUpRoot);
 
-// ─── Origin axes  右手系 Z-up: X×Y=Z ────────────────────────────────────────
-//   User X (水平)  = Three.js +X  (1, 0,  0)
-//   User Y (奥行き) = Three.js -Z  (0, 0, -1)   X×Y=Z を満たす
-//   User Z (垂直)  = Three.js +Y  (0, 1,  0)
+// Grid on Z=0 floor in Z-up space.
+// GridHelper is in XZ plane by default; rotate.x = +π/2 maps it to XY plane in Z-up.
+const grid = new THREE.GridHelper(2000, 40, 0x0f3460, 0x0f3460);
+grid.rotation.x = Math.PI / 2;
+zUpRoot.add(grid);
+
+// ─── Origin axes  右手系 Z-up: X×Y=Z ─────────────────────────────────────────
+// Inside zUpRoot, axes are authored in Z-up coordinates directly.
+// zUpRoot rotation maps them to the correct Three.js directions automatically.
 const AXES_SIZE = 150;
 const _O = new THREE.Vector3(0, 0, 0);
 
-scene.add(new THREE.ArrowHelper(new THREE.Vector3( 1,  0,  0), _O, AXES_SIZE, 0xff4444, 25, 10)); // X
-scene.add(new THREE.ArrowHelper(new THREE.Vector3( 0,  0, -1), _O, AXES_SIZE, 0x44ff44, 25, 10)); // Y
-scene.add(new THREE.ArrowHelper(new THREE.Vector3( 0,  1,  0), _O, AXES_SIZE, 0x4488ff, 25, 10)); // Z
+zUpRoot.add(new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), _O, AXES_SIZE, 0xff4444, 25, 10)); // X 赤
+zUpRoot.add(new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), _O, AXES_SIZE, 0x44ff44, 25, 10)); // Y 緑 奥行き
+zUpRoot.add(new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), _O, AXES_SIZE, 0x4488ff, 25, 10)); // Z 青 垂直
 
 function makeAxisLabel(text, color, position) {
   const cv = document.createElement('canvas');
@@ -55,16 +65,27 @@ function makeAxisLabel(text, color, position) {
   );
   sprite.position.copy(position);
   sprite.scale.setScalar(28);
-  scene.add(sprite);
+  zUpRoot.add(sprite);
 }
-makeAxisLabel('X', '#ff6666', new THREE.Vector3( AXES_SIZE + 16,  0,           0));
-makeAxisLabel('Y', '#66ff66', new THREE.Vector3( 0,               0, -(AXES_SIZE + 16))); // -Z in Three.js
-makeAxisLabel('Z', '#6699ff', new THREE.Vector3( 0,  AXES_SIZE + 16,           0));
+makeAxisLabel('X', '#ff6666', new THREE.Vector3(AXES_SIZE + 16, 0, 0));
+makeAxisLabel('Y', '#66ff66', new THREE.Vector3(0, AXES_SIZE + 16, 0));
+makeAxisLabel('Z', '#6699ff', new THREE.Vector3(0, 0, AXES_SIZE + 16));
+
+// ─── Models group ─────────────────────────────────────────────────────────────
+// Lives inside zUpRoot (Z-up space). Translation applied via THREE.Matrix4 for
+// sub-millimeter precision; matrixAutoUpdate=false so we control the matrix directly.
+const modelsGroup = new THREE.Group();
+modelsGroup.matrixAutoUpdate = false;
+zUpRoot.add(modelsGroup);
+
+// Translation stored in Z-up user coordinates (mm)
+const translation = new THREE.Vector3();
+
+function applyTranslation() {
+  modelsGroup.matrix.makeTranslation(translation.x, translation.y, translation.z);
+}
 
 // ─── State ───────────────────────────────────────────────────────────────────
-const modelsGroup = new THREE.Group();
-scene.add(modelsGroup);
-
 let isDragging = false;
 let isRightDragging = false;
 let lastMouse = { x: 0, y: 0 };
@@ -73,7 +94,6 @@ let didDrag = false;
 const DRAG_THRESHOLD = 5;
 const spherical = new THREE.Spherical().setFromVector3(INITIAL_CAM_POS);
 const cameraTarget = new THREE.Vector3();
-const translation = new THREE.Vector3();
 
 // ─── Selection ───────────────────────────────────────────────────────────────
 const raycaster = new THREE.Raycaster();
@@ -97,6 +117,22 @@ function selectModel(name) {
   }
 }
 
+const TEXTURE_KEYS = [
+  'map', 'specularMap', 'normalMap', 'bumpMap', 'roughnessMap', 'metalnessMap',
+  'alphaMap', 'aoMap', 'emissiveMap', 'envMap', 'lightMap', 'displacementMap',
+];
+
+function disposeMesh(obj) {
+  obj.geometry.dispose();
+  const mat = obj.material;
+  if (mat) {
+    for (const key of TEXTURE_KEYS) {
+      if (mat[key]) mat[key].dispose();
+    }
+    mat.dispose();
+  }
+}
+
 function deleteSelected() {
   if (!selectedName) return;
   const toRemove = [];
@@ -104,9 +140,8 @@ function deleteSelected() {
     if (obj.isMesh && obj.name === selectedName) toRemove.push(obj);
   });
   for (const obj of toRemove) {
-    obj.geometry.dispose();
-    obj.material.dispose();
-    modelsGroup.remove(obj);
+    disposeMesh(obj);
+    obj.parent.remove(obj);
   }
   selectedName = null;
   document.getElementById('btn-delete').disabled = true;
@@ -187,7 +222,7 @@ window.addEventListener('mousemove', (e) => {
 
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
-  spherical.radius = Math.max(1, Math.min(100000, spherical.radius * (1 + e.deltaY * 0.001)));
+  spherical.radius = Math.max(1, Math.min(1e7, spherical.radius * (1 + e.deltaY * 0.001)));
   updateCamera();
 }, { passive: false });
 
@@ -223,11 +258,11 @@ function addMesh(geometry, name) {
   }));
   mesh.name = name;
   modelsGroup.add(mesh);
-
   if (modelsGroup.children.length === 1) fitCamera();
 }
 
 function fitCamera() {
+  modelsGroup.updateWorldMatrix(true, true);
   const box = new THREE.Box3().setFromObject(modelsGroup);
   if (box.isEmpty()) return;
   const center = box.getCenter(new THREE.Vector3());
@@ -254,13 +289,10 @@ async function getOcct() {
 
 async function loadSTEP(buffer, name) {
   const occt = await getOcct();
-
   const result = occt.ReadStepFile(new Uint8Array(buffer), null);
-
   if (!result.success) {
     throw new Error('STEP ファイルのパースに失敗しました。');
   }
-
   for (const m of result.meshes) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(m.attributes.position.array, 3));
@@ -281,14 +313,6 @@ async function loadSTEP(buffer, name) {
     modelsGroup.add(mesh);
     if (modelsGroup.children.length === 1) fitCamera();
   }
-}
-
-// Z-up (X,Y,Z) → Three.js (X, Z_user, -Y_user)
-//   User X → Three.js X
-//   User Y → Three.js -Z
-//   User Z → Three.js  Y
-function applyTranslation() {
-  modelsGroup.position.set(translation.x, translation.z, -translation.y);
 }
 
 async function handleFile(buffer, fileName) {
@@ -326,11 +350,9 @@ container.addEventListener('dragleave', () => dropOverlay.classList.remove('visi
 container.addEventListener('drop', async (e) => {
   e.preventDefault();
   dropOverlay.classList.remove('visible');
-
   for (const file of Array.from(e.dataTransfer.files)) {
     const ext = file.name.split('.').pop().toLowerCase();
     if (!['step', 'stp', 'stl'].includes(ext)) continue;
-
     showLoading(true);
     try {
       await handleFile(await file.arrayBuffer(), file.name);
@@ -390,13 +412,15 @@ document.getElementById('btn-export').addEventListener('click', async () => {
     alert('エクスポートするモデルがありません。');
     return;
   }
-  const stlBuffer = buildSTLBuffer(modelsGroup);
+  const stlBuffer = buildSTLBuffer();
   await window.electronAPI.saveStlDialog(stlBuffer);
 });
 
-function buildSTLBuffer(group) {
+// Export in Z-up user coordinates: apply translation matrix to vertices only.
+// zUpRoot rotation is intentionally excluded — STL stays in Z-up space.
+function buildSTLBuffer() {
   const meshes = [];
-  group.traverse((obj) => { if (obj.isMesh) meshes.push(obj); });
+  modelsGroup.traverse((obj) => { if (obj.isMesh) meshes.push(obj); });
 
   let totalTri = 0;
   for (const m of meshes) {
@@ -414,7 +438,9 @@ function buildSTLBuffer(group) {
 
   for (const m of meshes) {
     const geo = m.geometry.clone();
-    geo.applyMatrix4(m.matrixWorld);
+    // Bake translation + mesh local transform into vertices at export time
+    const exportMatrix = new THREE.Matrix4().multiplyMatrices(modelsGroup.matrix, m.matrix);
+    geo.applyMatrix4(exportMatrix);
     const pos = geo.attributes.position;
     const idx = geo.index ? geo.index.array : null;
     const triCount = idx ? idx.length / 3 : pos.count / 3;
