@@ -29,6 +29,28 @@ const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
 dirLight2.position.set(-500, -200, -500);
 scene.add(dirLight2);
 
+// ─── Theme ────────────────────────────────────────────────────────────────────
+const THEME_COLORS = {
+  dark:  { sceneBg: 0x1a1a2e, gridCenter: 0x0f3460, gridLine: 0x0f3460 },
+  light: { sceneBg: 0xd8dce8, gridCenter: 0x8890a8, gridLine: 0xaab4cc },
+};
+
+function resolveTheme(theme) {
+  if (theme !== 'system') return theme;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function applyTheme(theme) {
+  const effective = resolveTheme(theme);
+  const c = THEME_COLORS[effective];
+  document.body.setAttribute('data-theme', effective);
+  scene.background.set(c.sceneBg);
+  rebuildGrid(c.gridCenter, c.gridLine);
+  localStorage.setItem('theme', theme);
+  const sel = document.getElementById('theme-select');
+  if (sel && sel.value !== theme) sel.value = theme;
+}
+
 // ─── Z-up root ────────────────────────────────────────────────────────────────
 // All scene content is authored in right-hand Z-up (X=右, Y=奥行き, Z=上).
 // rotation.x = -π/2 maps Z-up (x,y,z) → Three.js Y-up (x, z, -y).
@@ -37,9 +59,19 @@ zUpRoot.rotation.x = -Math.PI / 2;
 scene.add(zUpRoot);
 
 // Grid on Z=0 floor (XY plane in Z-up). GridHelper is in XZ plane; rotate to XY.
-const grid = new THREE.GridHelper(2000, 40, 0x0f3460, 0x0f3460);
+// Kept as `let` so rebuildGrid() can replace it on theme change.
+let grid = new THREE.GridHelper(2000, 40, 0x0f3460, 0x0f3460);
 grid.rotation.x = Math.PI / 2;
 zUpRoot.add(grid);
+
+function rebuildGrid(centerColor, lineColor) {
+  zUpRoot.remove(grid);
+  grid.geometry.dispose();
+  grid.material.dispose();
+  grid = new THREE.GridHelper(2000, 40, centerColor, lineColor);
+  grid.rotation.x = Math.PI / 2;
+  zUpRoot.add(grid);
+}
 
 // Origin axes in Z-up coordinates (arrows point in +X, +Y, +Z of user space)
 const AXES_SIZE = 150;
@@ -379,6 +411,19 @@ document.getElementById('move-ok').addEventListener('click', () => {
   selectedGroup.matrixWorldNeedsUpdate = true;
   moveDialog.classList.remove('visible');
 });
+
+// ─── Theme selector ──────────────────────────────────────────────────────────
+document.getElementById('theme-select').addEventListener('change', (e) => {
+  applyTheme(e.target.value);
+});
+
+// Re-apply when OS appearance changes (for "system" option)
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (localStorage.getItem('theme') === 'system') applyTheme('system');
+});
+
+// Restore persisted theme (default: dark)
+applyTheme(localStorage.getItem('theme') || 'dark');
 
 // ─── Export STL ───────────────────────────────────────────────────────────────
 document.getElementById('btn-export').addEventListener('click', async () => {
