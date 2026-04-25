@@ -1,4 +1,5 @@
 node_modules/
-main_bundle.js
-main_bundle.mjs
+out/
+dist/
+.DS_Store
 *.log
