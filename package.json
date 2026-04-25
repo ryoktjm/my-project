@@ -4,15 +4,23 @@
   "description": "STEP/STL 3D Model Viewer",
   "main": "main.js",
   "scripts": {
-    "start": "ELECTRON_RUN_AS_NODE= electron ."
+    "start": "ELECTRON_RUN_AS_NODE= electron .",
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "@electron/asar": "^4.2.0",
+    "@types/node": "^25.6.0",
+    "@types/three": "^0.184.0",
     "electron": "^41.2.1",
-    "esbuild": "^0.28.0"
+    "electron-vite": "^5.0.0",
+    "esbuild": "^0.28.0",
+    "typescript": "^6.0.3",
+    "vite": "^7.3.2"
   },
   "dependencies": {
     "occt-import-js": "^0.0.23",
