@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 /**
  * loader.worker.ts
  *
@@ -7,7 +8,17 @@
  * WASM memory safety: occt-import-js attributes are views into the WASM heap.
  * We copy them into plain Float32Array / Uint32Array before transferring so
  * the WASM heap is free to be reused after ReadStepFile() returns.
+ *
+ * WASM asset handling: the WASM binary is imported with Vite's `?url` suffix
+ * so Vite manages the asset lifecycle in both dev and production:
+ *   dev  → served from the Vite dev server
+ *   prod → copied to dist/renderer/assets/ with content hash, URL is relative
  */
+
+// Vite resolves this import and copies the WASM to the output directory.
+// `assetsInclude: ['**/*.wasm']` in electron.vite.config.ts ensures .wasm
+// files from node_modules are treated as static assets.
+import occtWasmUrl from 'occt-import-js/dist/occt-import-js.wasm?url';
 
 // ─── Message types ────────────────────────────────────────────────────────────
 
@@ -87,8 +98,12 @@ async function getOcct(): Promise<OcctInstance> {
   if (occtInstance) return occtInstance;
   const { default: init } = await import('occt-import-js');
   occtInstance = await init({
-    locateFile: (f: string) =>
-      new URL(`../../../node_modules/occt-import-js/dist/${f}`, import.meta.url).href,
+    // occtWasmUrl is resolved by Vite at build time:
+    //   dev  → URL served by Vite dev server
+    //   prod → relative URL to the hashed asset in dist/renderer/assets/
+    // This avoids the fragile import.meta.url relative-path pattern which
+    // breaks in production when the worker bundle moves to dist/renderer/assets/.
+    locateFile: (f: string) => (f === 'occt-import-js.wasm' ? occtWasmUrl : f),
   });
   return occtInstance;
 }
