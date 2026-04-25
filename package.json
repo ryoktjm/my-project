@@ -2,10 +2,10 @@
   "name": "3d-model-viewer",
   "version": "1.0.0",
   "description": "STEP/STL 3D Model Viewer",
-  "main": "main.js",
+  "main": "out/main/index.js",
   "scripts": {
     "start": "ELECTRON_RUN_AS_NODE= electron .",
-    "dev": "electron-vite dev",
+    "dev": "ELECTRON_RUN_AS_NODE= electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview"
   },
