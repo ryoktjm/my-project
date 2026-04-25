@@ -12,7 +12,8 @@
     <button id="btn-open">ファイルを開く</button>
     <div class="separator"></div>
     <button id="btn-move"   disabled>移動</button>
-    <button id="btn-export">エクスポート</button>
+    <button id="btn-export">STL 書き出し</button>
+    <button id="btn-export-glb">GLB 書き出し</button>
     <button id="btn-delete" disabled>削除</button>
     <div class="separator"></div>
     <button id="btn-reset">リセット</button>
@@ -25,9 +26,18 @@
     <span id="selection-label"></span>
   </div>
 
-  <div id="canvas-container">
-    <div id="drop-overlay">ここにファイルをドロップ</div>
-    <div id="loading-overlay">読み込み中...</div>
+  <div id="main-content">
+
+    <div id="canvas-container">
+      <div id="drop-overlay">ここにファイルをドロップ</div>
+      <div id="loading-overlay">読み込み中...</div>
+    </div>
+
+    <div id="sidebar">
+      <div class="sidebar-title">モデル一覧</div>
+      <ul id="outliner-list"></ul>
+    </div>
+
   </div>
 
   <!-- Move dialog -->

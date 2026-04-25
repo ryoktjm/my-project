@@ -60,6 +60,18 @@ async function openFile(): Promise<void> {
 
 ipcMain.handle('open-file-dialog', () => openFile());
 
+ipcMain.handle('save-glb-dialog', async (_event, glbData: ArrayBuffer) => {
+  const result = await dialog.showSaveDialog(mainWindow, {
+    filters: [{ name: 'GLB Files', extensions: ['glb'] }],
+    defaultPath: 'export.glb',
+  });
+  if (!result.canceled && result.filePath) {
+    writeFileSync(result.filePath, Buffer.from(glbData));
+    return { success: true };
+  }
+  return { success: false };
+});
+
 ipcMain.handle('save-stl-dialog', async (_event, stlData: ArrayBuffer) => {
   const result = await dialog.showSaveDialog(mainWindow, {
     filters: [{ name: 'STL Files', extensions: ['stl'] }],

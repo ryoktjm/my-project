@@ -2,6 +2,7 @@
 
 import './styles.css';
 import * as THREE from 'three';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { SceneManager }  from './core/SceneManager';
 import { ModelObject }   from './core/ModelObject';
 import type { WorkerResponse } from './workers/loader.worker';
@@ -13,6 +14,7 @@ declare global {
     electronAPI: {
       openFileDialog: () => Promise<void>;
       saveStlDialog:  (data: ArrayBuffer) => Promise<{ success: boolean }>;
+      saveGlbDialog:  (data: ArrayBuffer) => Promise<{ success: boolean }>;
       onLoadModel:    (cb: (data: { fileName: string; buffer: ArrayBuffer }) => void) => void;
     };
   }
@@ -20,12 +22,83 @@ declare global {
 
 // ─── App state ────────────────────────────────────────────────────────────────
 
-const container   = document.getElementById('canvas-container') as HTMLElement;
+const container    = document.getElementById('canvas-container') as HTMLElement;
 const sceneManager = new SceneManager(container);
 
-/** Lookup ModelObject by its THREE.Group (WeakMap — group is GC-friendly). */
-const modelMap    = new WeakMap<THREE.Group, ModelObject>();
+/** WeakMap lookup: THREE.Group → ModelObject */
+const modelMap = new WeakMap<THREE.Group, ModelObject>();
 let selectedModel: ModelObject | null = null;
+
+// ─── Outliner state ───────────────────────────────────────────────────────────
+
+interface OutlinerEntry {
+  readonly id:    string;
+  readonly model: ModelObject;
+  visible: boolean;
+}
+
+const outlinerEntries = new Map<string, OutlinerEntry>();
+let entryCounter = 0;
+
+const outlinerList = document.getElementById('outliner-list') as HTMLUListElement;
+
+function addToOutliner(model: ModelObject): void {
+  const id = `m${++entryCounter}`;
+  outlinerEntries.set(id, { id, model, visible: true });
+  renderOutlinerItem(id);
+}
+
+function removeFromOutliner(model: ModelObject): void {
+  for (const [id, entry] of outlinerEntries) {
+    if (entry.model === model) {
+      document.getElementById(`ol-${id}`)?.remove();
+      outlinerEntries.delete(id);
+      return;
+    }
+  }
+}
+
+function renderOutlinerItem(id: string): void {
+  const entry = outlinerEntries.get(id)!;
+
+  // Remove old element if re-rendering
+  document.getElementById(`ol-${id}`)?.remove();
+
+  const li = document.createElement('li');
+  li.id        = `ol-${id}`;
+  li.className = 'ol-item';
+  if (!entry.visible)            li.classList.add('ol-hidden');
+  if (entry.model === selectedModel) li.classList.add('ol-selected');
+
+  // Visibility toggle button
+  const visBtn = document.createElement('button');
+  visBtn.className = 'ol-vis';
+  visBtn.textContent = entry.visible ? '●' : '○';
+  visBtn.title = entry.visible ? '非表示' : '表示';
+  visBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    entry.visible = !entry.visible;
+    entry.model.group.visible = entry.visible;
+    renderOutlinerItem(id);
+  });
+
+  // Model name label
+  const label = document.createElement('span');
+  label.className   = 'ol-label';
+  label.textContent = entry.model.name;
+  label.title       = entry.model.name;
+
+  li.append(visBtn, label);
+  li.addEventListener('click', () => selectModel(entry.model));
+  outlinerList.appendChild(li);
+}
+
+function refreshOutlinerSelection(): void {
+  for (const [id, entry] of outlinerEntries) {
+    document.getElementById(`ol-${id}`)
+      ?.classList.toggle('ol-selected', entry.model === selectedModel);
+  }
+}
 
 // ─── Worker ──────────────────────────────────────────────────────────────────
 
@@ -46,7 +119,6 @@ loaderWorker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   const model = new ModelObject(msg.fileName);
   for (const m of msg.meshes) {
     model.addMesh({
-      // Wrap transferred buffers back into typed arrays
       position: new Float32Array(m.position),
       normal:   m.normal ? new Float32Array(m.normal) : undefined,
       index:    m.index  ? new Uint32Array(m.index)   : undefined,
@@ -57,6 +129,7 @@ loaderWorker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   const isFirst = sceneManager.modelsContainer.children.length === 0;
   sceneManager.modelsContainer.add(model.group);
   modelMap.set(model.group, model);
+  addToOutliner(model);
   if (isFirst) sceneManager.fitCamera();
 };
 
@@ -67,6 +140,7 @@ const btnMove     = document.getElementById('btn-move')     as HTMLButtonElement
 const btnReset    = document.getElementById('btn-reset')    as HTMLButtonElement;
 const btnOpen     = document.getElementById('btn-open')     as HTMLButtonElement;
 const btnExport   = document.getElementById('btn-export')   as HTMLButtonElement;
+const btnExportGlb = document.getElementById('btn-export-glb') as HTMLButtonElement;
 const selLabel    = document.getElementById('selection-label') as HTMLSpanElement;
 const moveDialog  = document.getElementById('move-dialog')  as HTMLElement;
 const loadingEl   = document.getElementById('loading-overlay') as HTMLElement;
@@ -83,13 +157,13 @@ function showLoading(v: boolean): void {
 // ─── Selection ────────────────────────────────────────────────────────────────
 
 function selectModel(model: ModelObject | null): void {
-  selectedModel?.setHighlight(false);
   selectedModel = model;
   const has = model !== null;
   btnDelete.disabled = !has;
   btnMove.disabled   = !has;
   selLabel.textContent = has ? `選択中: ${model!.name}` : '';
-  if (has) model!.setHighlight(true);
+  sceneManager.setSelection(has ? model!.group : null);
+  refreshOutlinerSelection();
 }
 
 sceneManager.onClick = (e: MouseEvent) => {
@@ -106,6 +180,7 @@ sceneManager.onClick = (e: MouseEvent) => {
 
 function deleteSelected(): void {
   if (!selectedModel) return;
+  removeFromOutliner(selectedModel);
   sceneManager.modelsContainer.remove(selectedModel.group);
   selectedModel.dispose();
   selectModel(null);
@@ -164,7 +239,6 @@ document.getElementById('move-cancel')!.addEventListener('click', () => {
 
 document.getElementById('move-ok')!.addEventListener('click', () => {
   if (!selectedModel) { moveDialog.classList.remove('visible'); return; }
-  // JS Number = 64-bit float → maintains 0.0001 mm precision without special handling
   const dx = parseFloat(moveX.value) || 0;
   const dy = parseFloat(moveY.value) || 0;
   const dz = parseFloat(moveZ.value) || 0;
@@ -172,7 +246,7 @@ document.getElementById('move-ok')!.addEventListener('click', () => {
   moveDialog.classList.remove('visible');
 });
 
-// ─── Export STL ──────────────────────────────────────────────────────────────
+// ─── STL Export ──────────────────────────────────────────────────────────────
 
 btnExport.addEventListener('click', async () => {
   if (sceneManager.modelsContainer.children.length === 0) {
@@ -182,14 +256,7 @@ btnExport.addEventListener('click', async () => {
   await window.electronAPI.saveStlDialog(buildSTLBuffer());
 });
 
-/**
- * Binary STL builder.
- * Calls ModelObject.getBakedGeometries() which applies the translation matrix
- * to vertex data at export time only — live geometry is never mutated.
- * Output is in Z-up user coordinates (zUpRoot rotation intentionally excluded).
- */
 function buildSTLBuffer(): ArrayBuffer {
-  // Collect all ModelObjects from direct children of modelsContainer
   const models: ModelObject[] = [];
   for (const child of sceneManager.modelsContainer.children) {
     const m = modelMap.get(child as THREE.Group);
@@ -200,9 +267,7 @@ function buildSTLBuffer(): ArrayBuffer {
 
   let totalTri = 0;
   for (const geo of allGeo) {
-    totalTri += geo.index
-      ? geo.index.count / 3
-      : geo.attributes.position.count / 3;
+    totalTri += geo.index ? geo.index.count / 3 : geo.attributes.position.count / 3;
   }
 
   const buf  = new ArrayBuffer(84 + totalTri * 50);
@@ -226,7 +291,6 @@ function buildSTLBuffer(): ArrayBuffer {
 
       const e1x = bx-ax, e1y = by-ay, e1z = bz-az;
       const e2x = cx-ax, e2y = cy-ay, e2z = cz-az;
-
       let nx = e1y*e2z - e1z*e2y;
       let ny = e1z*e2x - e1x*e2z;
       let nz = e1x*e2y - e1y*e2x;
@@ -244,12 +308,32 @@ function buildSTLBuffer(): ArrayBuffer {
       view.setUint16(off, 0, true); off += 2;
     }
 
-    // Release the temporary baked geometry
     geo.dispose();
   }
 
   return buf;
 }
+
+// ─── GLB Export ──────────────────────────────────────────────────────────────
+
+btnExportGlb.addEventListener('click', async () => {
+  if (sceneManager.modelsContainer.children.length === 0) {
+    alert('エクスポートするモデルがありません。');
+    return;
+  }
+
+  // Export modelsContainer hierarchy (Z-up user coordinates).
+  // Each model.group retains its translation matrix and material color.
+  // zUpRoot.position (RTE offset) is excluded since we export a sub-tree.
+  sceneManager.modelsContainer.updateMatrixWorld(true);
+  const exporter = new GLTFExporter();
+  const glb = await exporter.parseAsync(
+    sceneManager.modelsContainer,
+    { binary: true },
+  ) as ArrayBuffer;
+
+  await window.electronAPI.saveGlbDialog(glb);
+});
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 
@@ -259,7 +343,6 @@ themeSelect.addEventListener('change', () => {
   );
 });
 
-// Restore persisted theme on startup (default: dark)
 sceneManager.applyTheme(
   (localStorage.getItem('theme') as Parameters<typeof sceneManager.applyTheme>[0]) ?? 'dark',
 );

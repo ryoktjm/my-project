@@ -70,14 +70,6 @@ export class ModelObject {
     this.group.matrixWorldNeedsUpdate = true;
   }
 
-  setHighlight(active: boolean): void {
-    this.group.traverse((obj) => {
-      if (!(obj as THREE.Mesh).isMesh) return;
-      ((obj as THREE.Mesh).material as THREE.MeshPhongMaterial)
-        .emissive.set(active ? 0x2255aa : 0x000000);
-    });
-  }
-
   /**
    * Return cloned geometries with the current translation matrix baked in.
    * Used at STL export time — live geometry is never mutated.

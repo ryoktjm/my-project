@@ -5,6 +5,7 @@
   --bg-body:            #1a1a2e;
   --bg-toolbar:         #16213e;
   --bg-dialog:          #16213e;
+  --bg-sidebar:         #111827;
   --border-color:       #0f3460;
   --btn-bg:             #0f3460;
   --btn-hover:          #1a4f8a;
@@ -19,6 +20,9 @@
   --drop-overlay-bg:    rgba(15, 52, 96, 0.85);
   --drop-overlay-border:#1a4f8a;
   --loading-overlay-bg: rgba(26, 26, 46, 0.85);
+  --ol-hover:           #1a2a50;
+  --ol-selected:        #1a4f8a;
+  --ol-vis-color:       #4488ff;
 }
 
 /* ── Light theme ────────────────────────────────────────────── */
@@ -26,6 +30,7 @@
   --bg-body:            #f0f2f8;
   --bg-toolbar:         #ffffff;
   --bg-dialog:          #ffffff;
+  --bg-sidebar:         #e4e8f0;
   --border-color:       #c0cce0;
   --btn-bg:             #4a7ab5;
   --btn-hover:          #3a6aa0;
@@ -40,6 +45,9 @@
   --drop-overlay-bg:    rgba(74, 122, 181, 0.75);
   --drop-overlay-border:#4a7ab5;
   --loading-overlay-bg: rgba(240, 242, 248, 0.85);
+  --ol-hover:           #c8d8ea;
+  --ol-selected:        #90b8d8;
+  --ol-vis-color:       #3a6aa0;
 }
 
 body {
@@ -52,6 +60,7 @@ body {
   overflow: hidden;
 }
 
+/* ── Toolbar ────────────────────────────────────────────────── */
 #toolbar {
   display: flex;
   align-items: center;
@@ -106,6 +115,14 @@ body {
   margin: 0 4px;
 }
 
+/* ── Main content area (canvas + sidebar) ──────────────────── */
+#main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+}
+
 #canvas-container {
   flex: 1;
   position: relative;
@@ -117,6 +134,76 @@ body {
   height: 100% !important;
 }
 
+/* ── Sidebar / Outliner ─────────────────────────────────────── */
+#sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  background: var(--bg-sidebar);
+  border-left: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 10px 12px 6px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+#outliner-list {
+  list-style: none;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.ol-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid transparent;
+  transition: background 0.1s;
+  user-select: none;
+}
+.ol-item:hover    { background: var(--ol-hover); }
+.ol-item.ol-selected { background: var(--ol-selected); }
+
+.ol-vis {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--ol-vis-color);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  border-radius: 3px;
+  transition: background 0.1s;
+}
+.ol-vis:hover { background: var(--btn-hover); }
+
+.ol-item.ol-hidden .ol-label { opacity: 0.4; }
+.ol-item.ol-hidden .ol-vis   { opacity: 0.5; }
+
+.ol-label {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Drop / Loading overlays ────────────────────────────────── */
 #drop-overlay {
   position: absolute;
   inset: 0;
@@ -145,7 +232,7 @@ body {
 }
 #loading-overlay.visible { display: flex; }
 
-/* Move dialog */
+/* ── Move dialog ────────────────────────────────────────────── */
 #move-dialog {
   display: none;
   position: fixed;
@@ -204,7 +291,7 @@ body {
   font-size: 13px;
   border: none;
 }
-#move-dialog .buttons .ok { background: var(--btn-bg); color: var(--text-primary); }
+#move-dialog .buttons .ok     { background: var(--btn-bg); color: var(--text-primary); }
 #move-dialog .buttons .ok:hover { background: var(--btn-hover); }
 #move-dialog .buttons .cancel { background: var(--btn-cancel-bg); color: var(--text-primary); }
 #move-dialog .buttons .cancel:hover { background: var(--btn-cancel-hover); }
